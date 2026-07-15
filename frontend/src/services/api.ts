@@ -167,3 +167,4 @@ export const systemApi = {
 };
 
 export const apiBaseUrl = baseURL;
+export default api;
