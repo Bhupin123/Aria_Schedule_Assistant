@@ -9,7 +9,7 @@ from app.agents.booking_specialist import booking_specialist_node, TOOLS
 
 def route_from_triage(state: AgentState) -> str:
     intent = state.get("intent", "general")
-    if intent in ("booking", "cancel", "reschedule"):
+    if intent in ("booking", "cancel", "reschedule", "check"):
         return "booking_specialist"
     return END
 
@@ -24,12 +24,29 @@ def route_from_booking(state: AgentState) -> str:
     return END
 
 
+
+
 def create_graph(checkpointer: BaseCheckpointSaver) -> StateGraph:
     builder = StateGraph(AgentState)
 
     builder.add_node("triage", triage_node)
     builder.add_node("booking_specialist", booking_specialist_node)
-    builder.add_node("tools", ToolNode(TOOLS))
+
+    tool_node = ToolNode(TOOLS)
+
+    async def debug_tools(state):
+        print("\n" + "=" * 80)
+        print("TOOL NODE EXECUTED")
+        print("=" * 80)
+
+        result = await tool_node.ainvoke(state)
+
+        print("TOOL RESULT:")
+        print(result)
+
+        return result
+
+    builder.add_node("tools", debug_tools)
 
     builder.add_edge(START, "triage")
     builder.add_conditional_edges("triage", route_from_triage, {

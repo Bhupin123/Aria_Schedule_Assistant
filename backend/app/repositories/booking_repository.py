@@ -18,6 +18,24 @@ class BookingRepository(BaseRepository[Booking]):
         result = await self.session.execute(q)
         return list(result.scalars().all())
 
+    async def find_by_date(self, slot_date: date, status: Optional[str] = None) -> list[Booking]:
+        q = select(Booking).where(Booking.booking_date == slot_date)
+        if status:
+            q = q.where(Booking.status == status)
+        q = q.order_by(Booking.booking_time)
+        result = await self.session.execute(q)
+        return list(result.scalars().all())
+
+    async def find_by_date_range(self, start: date, end: date, status: Optional[str] = None) -> list[Booking]:
+        q = select(Booking).where(
+            and_(Booking.booking_date >= start, Booking.booking_date <= end)
+        )
+        if status:
+            q = q.where(Booking.status == status)
+        q = q.order_by(Booking.booking_date, Booking.booking_time)
+        result = await self.session.execute(q)
+        return list(result.scalars().all())
+
     async def find_by_slot(self, slot_id: str) -> Optional[Booking]:
         result = await self.session.execute(
             select(Booking).where(

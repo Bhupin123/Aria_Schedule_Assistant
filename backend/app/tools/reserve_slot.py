@@ -1,6 +1,6 @@
 from langchain_core.tools import tool
 from email_validator import validate_email, EmailNotValidError
-from app.db.database import get_session
+from app.db.database import async_session_factory
 from app.services.booking_service import BookingService, BookingError
 from app.services.availability_service import AvailabilityService
 from app.core.date_utils import normalize_date, normalize_time
@@ -41,7 +41,7 @@ async def reserve_slot(date: str, time: str, email: str, purpose: str = "") -> d
         h, m = map(int, normalized_time.split(":"))
         slot_time = time_type(h, m)
 
-        async with get_session() as session:
+        async with async_session_factory() as session:
             avail_service = AvailabilityService(session)
             slot = await avail_service.find_slot(slot_date, slot_time)
 
@@ -64,6 +64,7 @@ async def reserve_slot(date: str, time: str, email: str, purpose: str = "") -> d
                 booking_time=slot_time,
                 purpose=purpose or None,
             )
+            await session.commit()
 
         return {
             "status": "success",

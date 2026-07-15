@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "Scheduling Assistant"
 
-    ALLOWED_ORIGINS: str = "http://localhost:5174"
+    ALLOWED_ORIGINS: str = "http://localhost:8080/"
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     APP_VERSION: str = "1.0.0"

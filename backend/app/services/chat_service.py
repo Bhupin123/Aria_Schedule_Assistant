@@ -12,6 +12,7 @@ class ChatService:
 
     async def process_message(self, thread_id: str, message: str) -> ChatResponse:
         await self._upsert_conversation(thread_id)
+        await self.session.commit()
 
         config = {"configurable": {"thread_id": thread_id}}
         input_state: dict = {
@@ -27,13 +28,32 @@ class ChatService:
         }
 
         try:
-            result: AgentState = await self.graph.ainvoke(input_state, config=config)
+            print("=" * 80)
+            print(f"Thread ID: {thread_id}")
+            print(f"User message: {message}")
+            print(">>> Starting LangGraph...")
+
+            result: AgentState = await self.graph.ainvoke(
+                input_state,
+                config=config
+            )
+
+            print(">>> LangGraph completed successfully!")
+            print("Result:")
+            print(result)
+            print("=" * 80)
+
         except Exception as exc:
             import traceback
+
+            print("=" * 80)
+            print(">>> LangGraph FAILED!")
             traceback.print_exc()
+            print("=" * 80)
+
             return ChatResponse(
                 thread_id=thread_id,
-                response="I encountered an issue. Your session is saved — please try again.",
+                response=f"{type(exc).__name__}: {str(exc)}",
                 booking_status=BookingStatus(),
             )
 

@@ -1,8 +1,8 @@
 from datetime import date, timedelta, time
-from sqlalchemy import text, select, func
+from sqlalchemy import text
 from app.db.database import engine
 from app.db.base import Base
-import app.models.orm  # noqa: F401
+import app.models.orm  # noqa: F401 — registers all ORM models
 
 
 async def init_db() -> None:
@@ -16,38 +16,36 @@ async def init_db() -> None:
 async def _seed_availability() -> None:
     from app.db.database import async_session_factory
     from app.models.orm.availability_slot import AvailabilitySlot
+    from sqlalchemy import select
 
     async with async_session_factory() as session:
-        today = date.today()
-        window_end = today + timedelta(days=90)
-
-        # Check how far ahead we have slots
-        result = await session.execute(
-            select(func.max(AvailabilitySlot.slot_date))
-        )
-        max_date = result.scalar_one_or_none()
-
-        # Already seeded up to or beyond window_end
-        if max_date and max_date >= window_end:
-            return
-
-        start_from = (max_date + timedelta(days=1)) if max_date else (today + timedelta(days=1))
+        result = await session.execute(select(AvailabilitySlot).limit(1))
+        if result.scalar_one_or_none():
+            return  # already seeded
 
         slots = []
-        current = start_from
-        while current <= window_end:
-            for hour in range(9, 17):
-                for minute in (0, 30):
-                    slots.append(
-                        AvailabilitySlot(
-                            slot_date=current,
-                            slot_time=time(hour, minute),
-                            duration_minutes=30,
-                            is_available=True,
-                        )
+        today = date.today()
+        for day_offset in range(1, 31):
+            slot_date = today + timedelta(days=day_offset)
+            hour = 9
+            while hour < 17:
+                slots.append(
+                    AvailabilitySlot(
+                        slot_date=slot_date,
+                        slot_time=time(hour, 0),
+                        duration_minutes=30,
+                        is_available=True,
                     )
-            current += timedelta(days=1)
+                )
+                slots.append(
+                    AvailabilitySlot(
+                        slot_date=slot_date,
+                        slot_time=time(hour, 30),
+                        duration_minutes=30,
+                        is_available=True,
+                    )
+                )
+                hour += 1
 
-        if slots:
-            session.add_all(slots)
-            await session.commit()
+        session.add_all(slots)
+        await session.commit()

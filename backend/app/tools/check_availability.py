@@ -12,7 +12,7 @@ async def check_availability(date: str) -> dict:
         date: Any human-readable date string (e.g., 'tomorrow', 'next Monday', '2025-01-15')
     
     Returns:
-        Dictionary with status, date, and list of available slots.
+        Dictionary with status, date, and list of available times.
     """
     try:
         normalized = normalize_date(date)
@@ -28,8 +28,8 @@ async def check_availability(date: str) -> dict:
         return {
             "status": "success",
             "date": normalized,
-            "slots": slots,
             "count": len(slots),
+            "available_times": [s["time"] for s in slots],
         }
     except Exception as e:
         return {"status": "error", "reason": f"Failed to check availability: {str(e)}"}

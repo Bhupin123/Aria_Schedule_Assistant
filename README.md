@@ -20,16 +20,10 @@ AI-powered appointment scheduling via natural conversation. Built with LangGraph
 
 ```bash
 cd backend
-cp .env.example .env        # then edit .env — see note below
+cp .env.example .env        # Fill in GROQ_API_KEY and SMTP_* values
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
-
-> **`GROQ_API_KEY` is required** — the app will fail to start without it. Get a free
-> key at https://console.groq.com. `SMTP_USER`/`SMTP_PASSWORD` are **optional**: if
-> left blank, `send_booking_notification` simulates the email (logs it, returns
-> success) instead of actually sending one, so the full booking flow still works
-> without a Gmail App Password.
 
 The server auto-creates all tables and seeds 30 days of availability slots on first start.
 

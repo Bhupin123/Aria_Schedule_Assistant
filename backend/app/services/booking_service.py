@@ -42,6 +42,7 @@ class BookingService:
             status="confirmed",
         )
         await self.slot_repo.mark_unavailable(slot_id)
+        await self.session.flush()
         return booking
 
     async def cancel_booking(self, booking_id: str, reason: Optional[str] = None) -> Booking:
@@ -53,6 +54,7 @@ class BookingService:
 
         booking = await self.repo.update(booking, status="cancelled", cancelled_reason=reason)
         await self.slot_repo.mark_available(booking.availability_slot_id)
+        await self.session.flush()
         return booking
 
     async def get_booking(self, booking_id: str) -> Optional[Booking]:

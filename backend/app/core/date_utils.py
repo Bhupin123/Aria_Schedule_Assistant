@@ -10,24 +10,21 @@ _WEEKDAYS = {
 }
 
 
+_PREFIXES = ("this coming ", "next ", "this ", "coming ", "upcoming ")
+
 def _parse_next_weekday(raw: str, ref: date) -> Optional[date]:
-    """Handle 'next <weekday>' and '<weekday>' explicitly."""
     lower = raw.strip().lower()
-    is_next = lower.startswith("next ")
-    word = lower.removeprefix("next ").strip()
-    if word not in _WEEKDAYS:
+    for prefix in _PREFIXES:
+        if lower.startswith(prefix):
+            lower = lower[len(prefix):].strip()
+            break
+    if lower not in _WEEKDAYS:
         return None
-    wd = _WEEKDAYS[word]
+    wd = _WEEKDAYS[lower]
     ref_dt = datetime(ref.year, ref.month, ref.day)
-    if is_next:
-        # Always the NEXT occurrence, never today
-        result = ref_dt + relativedelta(weekday=wd(+1))
-        if result.date() == ref:
-            result += timedelta(weeks=1)
-    else:
-        result = ref_dt + relativedelta(weekday=wd(+1))
-        if result.date() == ref:
-            result += timedelta(weeks=1)
+    result = ref_dt + relativedelta(weekday=wd(+1))
+    if result.date() <= ref:
+        result = ref_dt + timedelta(weeks=1) + relativedelta(weekday=wd(+1))
     return result.date()
 
 

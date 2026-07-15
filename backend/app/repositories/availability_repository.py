@@ -1,6 +1,6 @@
 from datetime import date, time
 from typing import Optional
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.base import BaseRepository
 from app.models.orm.availability_slot import AvailabilitySlot
@@ -26,20 +26,22 @@ class AvailabilityRepository(BaseRepository[AvailabilitySlot]):
         )
         return result.scalar_one_or_none()
 
+    from sqlalchemy import select, and_, update
+
     async def mark_unavailable(self, slot_id: str) -> bool:
-        slot = await self.get(slot_id)
-        if not slot:
-            return False
-        slot.is_available = False
-        await self.session.flush()
+        await self.session.execute(
+            update(AvailabilitySlot)
+            .where(AvailabilitySlot.id == slot_id)
+            .values(is_available=False)
+        )
         return True
 
     async def mark_available(self, slot_id: str) -> bool:
-        slot = await self.get(slot_id)
-        if not slot:
-            return False
-        slot.is_available = True
-        await self.session.flush()
+        await self.session.execute(
+            update(AvailabilitySlot)
+            .where(AvailabilitySlot.id == slot_id)
+            .values(is_available=True)
+        )
         return True
 
     async def bulk_create(self, slots_data: list[dict]) -> int:

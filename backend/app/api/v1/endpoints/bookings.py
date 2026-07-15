@@ -38,13 +38,25 @@ async def get_booking(
 
 
 @router.delete("/{booking_id}", response_model=BookingRead)
-async def cancel_booking(
+async def cancel_booking_delete(
     booking_id: str,
     body: BookingCancel = BookingCancel(),
     svc: BookingService = Depends(get_booking_service),
 ):
     try:
         booking = await svc.cancel_booking(booking_id, reason=body.reason)
+        return BookingRead.model_validate(booking)
+    except BookingError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{booking_id}/cancel", response_model=BookingRead)
+async def cancel_booking_post(
+    booking_id: str,
+    svc: BookingService = Depends(get_booking_service),
+):
+    try:
+        booking = await svc.cancel_booking(booking_id, reason="Cancelled via dashboard")
         return BookingRead.model_validate(booking)
     except BookingError as e:
         raise HTTPException(status_code=400, detail=str(e))
