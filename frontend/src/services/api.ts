@@ -13,15 +13,16 @@ const baseURL =
 
 export const api = axios.create({
   baseURL,
-  timeout: 30_000,
+  timeout: 60_000,
   headers: { "Content-Type": "application/json" },
 });
 
 api.interceptors.response.use(
   (r) => r,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     if (!error.response) {
-      return Promise.reject(new Error("Network error — please check your connection."));
+      await new Promise((r) => setTimeout(r, 5000));
+      return api.request(error.config!);
     }
     const data = error.response.data as { detail?: string; message?: string } | undefined;
     const msg = data?.detail ?? data?.message ?? `Request failed (${error.response.status})`;

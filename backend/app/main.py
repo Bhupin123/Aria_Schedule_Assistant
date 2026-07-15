@@ -34,6 +34,10 @@ app = FastAPI(
 async def health_v1():
     return {"status": "ok"}
 
+@app.get("/")
+def read_root():
+    return {"status": "healthy"}
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
