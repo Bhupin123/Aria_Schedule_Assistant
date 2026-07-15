@@ -13,16 +13,15 @@ const baseURL =
 
 export const api = axios.create({
   baseURL,
-  timeout: 60_000,
+  timeout: 30_000,
   headers: { "Content-Type": "application/json" },
 });
 
 api.interceptors.response.use(
   (r) => r,
-  async (error: AxiosError) => {
+  (error: AxiosError) => {
     if (!error.response) {
-      await new Promise((r) => setTimeout(r, 5000));
-      return api.request(error.config!);
+      return Promise.reject(new Error("Network error — please check your connection."));
     }
     const data = error.response.data as { detail?: string; message?: string } | undefined;
     const msg = data?.detail ?? data?.message ?? `Request failed (${error.response.status})`;
@@ -167,4 +166,3 @@ export const systemApi = {
 };
 
 export const apiBaseUrl = baseURL;
-export default api;
