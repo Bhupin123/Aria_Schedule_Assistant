@@ -1,0 +1,16 @@
+fastapi==0.139.0
+uvicorn[standard]==0.51.0
+pydantic==2.13.4
+pydantic-settings==2.14.2
+sqlalchemy[asyncio]==2.0.51
+aiosqlite==0.22.1
+langgraph==1.2.9
+langgraph-checkpoint-sqlite==3.1.0
+langchain-core==1.4.9
+langchain-groq==1.1.3
+email-validator==2.3.0
+dateparser==1.4.1
+python-dateutil==2.9.0.post0
+slowapi==0.1.10
+python-multipart==0.0.32
+httpx==0.28.1
