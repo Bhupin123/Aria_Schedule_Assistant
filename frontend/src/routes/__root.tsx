@@ -10,9 +10,12 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ThemeProvider } from "@/context/theme-context";
+import { AuthProvider } from "@/context/auth-context";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 
 function NotFoundComponent() {
   return (
@@ -39,6 +42,9 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  useEffect(() => {
+    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+  }, [error]);
 
   return (
     <div className="bg-background flex min-h-screen items-center justify-center px-4">
@@ -117,11 +123,22 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
+      router.invalidate();
+      if (event !== "SIGNED_OUT") queryClient.invalidateQueries();
+    });
+    return () => data.subscription.unsubscribe();
+  }, [router, queryClient]);
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <Outlet />
-        <Toaster position="top-right" richColors />
+        <AuthProvider>
+          <Outlet />
+          <Toaster position="top-right" richColors />
+        </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

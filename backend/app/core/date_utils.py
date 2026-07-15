@@ -9,8 +9,8 @@ _WEEKDAYS = {
     "thursday": TH, "friday": FR, "saturday": SA, "sunday": SU,
 }
 
-
 _PREFIXES = ("this coming ", "next ", "this ", "coming ", "upcoming ")
+
 
 def _parse_next_weekday(raw: str, ref: date) -> Optional[date]:
     lower = raw.strip().lower()
@@ -32,7 +32,6 @@ def normalize_date(raw: str, reference: Optional[date] = None) -> str:
     """Parse any human date string → ISO 8601 'YYYY-MM-DD'. Raises ValueError on failure."""
     ref = reference or date.today()
 
-    # Try explicit weekday handling first
     d = _parse_next_weekday(raw, ref)
 
     if d is None:
@@ -51,6 +50,37 @@ def normalize_date(raw: str, reference: Optional[date] = None) -> str:
     if d > ref + timedelta(days=90):
         raise ValueError("Date is more than 90 days away. Please choose a date within the next 90 days.")
     return d.isoformat()
+
+
+def normalize_date_range(raw: str, reference: Optional[date] = None) -> tuple[str, str]:
+    """Parse a range phrase → (start_iso, end_iso). Falls back to single date for both."""
+    ref = reference or date.today()
+    lower = raw.strip().lower()
+
+    if "weekend" in lower:
+        days_until_sat = (5 - ref.weekday()) % 7
+        if days_until_sat == 0:
+            days_until_sat = 7
+        sat = ref + timedelta(days=days_until_sat)
+        sun = sat + timedelta(days=1)
+        return sat.isoformat(), sun.isoformat()
+
+    if "next week" in lower:
+        mon = ref - timedelta(days=ref.weekday()) + timedelta(weeks=1)
+        sun = mon + timedelta(days=6)
+        return mon.isoformat(), sun.isoformat()
+
+    if "this week" in lower:
+        mon = ref - timedelta(days=ref.weekday())
+        sun = mon + timedelta(days=6)
+        return max(ref, mon).isoformat(), sun.isoformat()
+
+    if lower == "tomorrow":
+        d = ref + timedelta(days=1)
+        return d.isoformat(), d.isoformat()
+
+    d = normalize_date(raw, ref)
+    return d, d
 
 
 def normalize_time(raw: str) -> str:
@@ -76,7 +106,6 @@ def normalize_time(raw: str) -> str:
     if t.hour < 8 or t.hour >= 18:
         raise ValueError(f"Time {t.strftime('%I:%M %p')} is outside booking hours (8 AM – 6 PM).")
 
-    # Quantize to nearest 30-min slot
     minutes = t.hour * 60 + t.minute
     quantized = round(minutes / 30) * 30
     h, m = divmod(quantized, 60)

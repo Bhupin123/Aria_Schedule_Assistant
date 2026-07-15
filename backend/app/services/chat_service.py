@@ -1,8 +1,43 @@
+import re
+import traceback
+
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.state import AgentState
 from app.models.orm.conversation import Conversation
 from app.models.schemas.chat import ChatResponse, BookingStatus, BookingContextOut, HistoryResponse, MessageRecord
+
+
+def _friendly_error(exc: Exception) -> str:
+    """
+    Convert any exception into a user-facing message.
+    Never exposes raw exception text, stack traces, or internal details.
+    """
+    exc_type = type(exc).__name__
+
+    # Groq / OpenAI rate limit (429)
+    if exc_type == "RateLimitError" or "rate_limit_exceeded" in str(exc).lower():
+        match = re.search(r"try again in ([\d]+m[\d.]+s|[\d.]+ seconds?)", str(exc))
+        wait = match.group(1) if match else "a few minutes"
+        return (
+            f"I'm temporarily unavailable — the AI service is rate-limited right now. "
+            f"Please try again in **{wait}**."
+        )
+
+    # Groq / OpenAI auth errors
+    if exc_type in ("AuthenticationError", "PermissionDeniedError"):
+        return "There's a configuration issue with the AI service. Please contact support."
+
+    # Network / timeout
+    if exc_type in ("ConnectTimeout", "ReadTimeout", "TimeoutError", "ConnectionError"):
+        return "The request timed out. Please check your connection and try again."
+
+    # LangGraph / agent internal errors
+    if "langgraph" in str(type(exc).__module__):
+        return "I ran into an issue processing your request. Please try rephrasing or try again."
+
+    # Generic fallback — never expose exc details
+    return "Something went wrong on my end. Please try again in a moment."
 
 
 class ChatService:
@@ -35,7 +70,7 @@ class ChatService:
 
             result: AgentState = await self.graph.ainvoke(
                 input_state,
-                config=config
+                config=config,
             )
 
             print(">>> LangGraph completed successfully!")
@@ -44,16 +79,14 @@ class ChatService:
             print("=" * 80)
 
         except Exception as exc:
-            import traceback
-
             print("=" * 80)
-            print(">>> LangGraph FAILED!")
+            print(f">>> LangGraph FAILED! ({type(exc).__name__})")
             traceback.print_exc()
             print("=" * 80)
 
             return ChatResponse(
                 thread_id=thread_id,
-                response=f"{type(exc).__name__}: {str(exc)}",
+                response=_friendly_error(exc),
                 booking_status=BookingStatus(),
             )
 

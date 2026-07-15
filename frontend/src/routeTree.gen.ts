@@ -12,9 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as BookingsRouteImport } from './routes/bookings'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BookingsIndexRouteImport } from './routes/bookings.index'
 import { Route as BookingsIdRouteImport } from './routes/bookings.$id'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -29,6 +32,15 @@ const ChatRoute = ChatRouteImport.update({
 const BookingsRoute = BookingsRouteImport.update({
   id: '/bookings',
   path: '/bookings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -46,49 +58,80 @@ const BookingsIdRoute = BookingsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => BookingsRoute,
 } as any)
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/bookings': typeof BookingsRouteWithChildren
   '/chat': typeof ChatRoute
   '/settings': typeof SettingsRoute
+  '/admin': typeof AuthenticatedAdminRoute
   '/bookings/$id': typeof BookingsIdRoute
   '/bookings/': typeof BookingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/chat': typeof ChatRoute
   '/settings': typeof SettingsRoute
+  '/admin': typeof AuthenticatedAdminRoute
   '/bookings/$id': typeof BookingsIdRoute
   '/bookings': typeof BookingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
   '/bookings': typeof BookingsRouteWithChildren
   '/chat': typeof ChatRoute
   '/settings': typeof SettingsRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/bookings/$id': typeof BookingsIdRoute
   '/bookings/': typeof BookingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/bookings' | '/chat' | '/settings' | '/bookings/$id' | '/bookings/'
-  fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/chat' | '/settings' | '/bookings/$id' | '/bookings'
-  id:
-    | '__root__'
     | '/'
+    | '/auth'
     | '/bookings'
     | '/chat'
     | '/settings'
+    | '/admin'
+    | '/bookings/$id'
+    | '/bookings/'
+  fileRoutesByTo: FileRoutesByTo
+  to:
+    | '/'
+    | '/auth'
+    | '/chat'
+    | '/settings'
+    | '/admin'
+    | '/bookings/$id'
+    | '/bookings'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/bookings'
+    | '/chat'
+    | '/settings'
+    | '/_authenticated/admin'
     | '/bookings/$id'
     | '/bookings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
   BookingsRoute: typeof BookingsRouteWithChildren
   ChatRoute: typeof ChatRoute
   SettingsRoute: typeof SettingsRoute
@@ -117,6 +160,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BookingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -138,8 +195,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BookingsIdRouteImport
       parentRoute: typeof BookingsRoute
     }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
+
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 interface BookingsRouteChildren {
   BookingsIdRoute: typeof BookingsIdRoute
@@ -157,6 +232,8 @@ const BookingsRouteWithChildren = BookingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
   BookingsRoute: BookingsRouteWithChildren,
   ChatRoute: ChatRoute,
   SettingsRoute: SettingsRoute,

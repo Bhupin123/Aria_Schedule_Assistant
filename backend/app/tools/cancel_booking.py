@@ -1,3 +1,4 @@
+from datetime import date as date_type, timedelta
 from langchain_core.tools import tool
 from app.db.database import get_session
 from app.services.booking_service import BookingService, BookingError
@@ -56,17 +57,16 @@ async def list_bookings_by_email(email: str) -> dict:
 
 @tool
 async def list_bookings_by_date(date: str) -> dict:
-    """List ALL confirmed bookings on a specific date regardless of email.
-    Use this when user says 'cancel all bookings on X date' or 'cancel all this weekend'.
+    """List ALL confirmed bookings on a specific single date regardless of email.
+    Use this when user says 'cancel all bookings on X date'.
     Args:
-        date: Date string e.g. 'this saturday', '2026-07-16', 'tomorrow'
+        date: ISO date string YYYY-MM-DD only
     """
     try:
         normalized = normalize_date(date)
     except ValueError as e:
         return {"status": "error", "reason": str(e)}
     try:
-        from datetime import date as date_type
         slot_date = date_type.fromisoformat(normalized)
         async with get_session() as session:
             repo = BookingRepository(session)
@@ -81,6 +81,40 @@ async def list_bookings_by_date(date: str) -> dict:
                           "email": b.email,
                           "purpose": b.purpose, "status": b.status}
                          for b in bookings],
+        }
+    except Exception as e:
+        return {"status": "error", "reason": str(e)}
+
+
+@tool
+async def list_bookings_by_date_range(start_date: str, end_date: str) -> dict:
+    """List ALL confirmed bookings between start_date and end_date (inclusive).
+    Use this for 'cancel all this weekend', 'cancel all next week', or any multi-day range.
+    Args:
+        start_date: ISO date string YYYY-MM-DD
+        end_date: ISO date string YYYY-MM-DD
+    """
+    try:
+        start = date_type.fromisoformat(start_date)
+        end = date_type.fromisoformat(end_date)
+        all_bookings = []
+        async with get_session() as session:
+            repo = BookingRepository(session)
+            current = start
+            while current <= end:
+                day_bookings = await repo.find_by_date(current, status="confirmed")
+                all_bookings.extend(day_bookings)
+                current += timedelta(days=1)
+        if not all_bookings:
+            return {"status": "success", "bookings": [], "count": 0,
+                    "message": f"No confirmed bookings between {start_date} and {end_date}"}
+        return {
+            "status": "success", "count": len(all_bookings),
+            "bookings": [{"booking_id": b.id, "date": b.booking_date.isoformat(),
+                          "time": b.booking_time.strftime("%H:%M"),
+                          "email": b.email,
+                          "purpose": b.purpose, "status": b.status}
+                         for b in all_bookings],
         }
     except Exception as e:
         return {"status": "error", "reason": str(e)}

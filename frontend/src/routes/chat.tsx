@@ -12,17 +12,6 @@ import { TypingIndicator } from "@/components/chat/typing-indicator";
 import { chatApi } from "@/services/api";
 import type { ChatMessage, Conversation } from "@/types";
 import { cn } from "@/lib/utils";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/chat")({
   head: () => ({
@@ -62,9 +51,10 @@ function ChatPage() {
     setConversations(loadConversations());
   }, []);
 
-  // FIX 1: always persist, even when array is empty (so deletions are saved)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+    if (conversations.length) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+    }
   }, [conversations]);
 
   const active = useMemo(
@@ -152,6 +142,7 @@ function ChatPage() {
     if (!active) return;
     const lastUser = [...active.messages].reverse().find((m) => m.role === "user");
     if (!lastUser) return;
+    // Remove last assistant message before regenerating
     setConversations((prev) =>
       prev.map((c) => {
         if (c.id !== active.id) return c;
@@ -190,18 +181,11 @@ function ChatPage() {
             )}
             <div className="flex flex-col gap-1 pb-4">
               {conversations.map((c) => (
-                <div
+                <button
                   key={c.id}
-                  role="button"
-                  tabIndex={0}
                   onClick={() => setActiveId(c.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      setActiveId(c.id);
-                    }
-                  }}
                   className={cn(
-                    "group flex cursor-pointer w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
+                    "group flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
                     c.id === activeId
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
                       : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60",
@@ -209,41 +193,19 @@ function ChatPage() {
                 >
                   <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
                   <span className="flex-1 truncate">{c.title}</span>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0 rounded"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" style={{ color: "#ef4444" }} />
-                      </Button>
-                    </AlertDialogTrigger>
-
-                    <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This conversation will be permanently deleted and cannot be recovered.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteConversation(c.id);
-                          }}
-                        >
-                          Delete
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteConversation(c.id);
+                    }}
+                    className="hover:text-destructive shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                    aria-label="Delete conversation"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </span>
+                </button>
               ))}
             </div>
           </ScrollArea>

@@ -1,9 +1,19 @@
-import { Link, useRouterState } from "@tanstack/react-router";
-import { Bot, Calendar, MessageSquare, Settings as SettingsIcon, Menu, X } from "lucide-react";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Bot, Calendar, MessageSquare, Settings as SettingsIcon, Menu, X, ShieldCheck, LogOut, LogIn, User as UserIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ConnectionStatusBadge } from "@/components/connection-status-badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/context/auth-context";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -16,6 +26,18 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (to: string) => pathname === to || pathname.startsWith(to + "/");
+  const { user, isAdmin, signOut } = useAuth();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  const handleSignOut = async () => {
+    await qc.cancelQueries();
+    qc.clear();
+    await signOut();
+    navigate({ to: "/auth", replace: true });
+  };
+
+  const initial = (user?.user_metadata?.full_name || user?.email || "?").toString().slice(0, 1).toUpperCase();
 
   return (
     <header className="glass sticky top-0 z-40 border-b">
@@ -43,14 +65,79 @@ export function Navbar() {
               {n.label}
             </Link>
           ))}
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                isActive("/admin")
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" /> Admin
+            </Link>
+          )}
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
           <ConnectionStatusBadge className="hidden sm:inline-flex" />
           <ThemeToggle />
-          <Button asChild size="sm" className="hidden md:inline-flex">
-            <Link to="/chat">Launch app</Link>
-          </Button>
+
+          {user ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  aria-label="Account menu"
+                  className="gradient-brand-bg grid h-9 w-9 place-items-center rounded-full text-sm font-semibold text-primary-foreground shadow-glow ring-2 ring-background transition hover:opacity-90"
+                >
+                  {user.user_metadata?.avatar_url ? (
+                    <img
+                      src={user.user_metadata.avatar_url as string}
+                      alt=""
+                      className="h-full w-full rounded-full object-cover"
+                    />
+                  ) : (
+                    initial
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium">
+                    {(user.user_metadata?.full_name as string) || "Account"}
+                  </span>
+                  <span className="text-muted-foreground truncate text-xs font-normal">
+                    {user.email}
+                  </span>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/settings">
+                    <UserIcon className="mr-2 h-4 w-4" /> Settings
+                  </Link>
+                </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link to="/admin">
+                      <ShieldCheck className="mr-2 h-4 w-4" /> Admin panel
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="mr-2 h-4 w-4" /> Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button asChild size="sm" variant="outline" className="hidden md:inline-flex">
+              <Link to="/auth">
+                <LogIn className="mr-1.5 h-4 w-4" /> Sign in
+              </Link>
+            </Button>
+          )}
+
           <Button
             variant="ghost"
             size="icon"
@@ -81,6 +168,24 @@ export function Navbar() {
                 <n.icon className="h-4 w-4" /> {n.label}
               </Link>
             ))}
+            {isAdmin && (
+              <Link
+                to="/admin"
+                onClick={() => setOpen(false)}
+                className="text-muted-foreground hover:bg-muted flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium"
+              >
+                <ShieldCheck className="h-4 w-4" /> Admin
+              </Link>
+            )}
+            {!user && (
+              <Link
+                to="/auth"
+                onClick={() => setOpen(false)}
+                className="text-muted-foreground hover:bg-muted flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium"
+              >
+                <LogIn className="h-4 w-4" /> Sign in
+              </Link>
+            )}
             <ConnectionStatusBadge className="mt-2 self-start" />
           </div>
         </div>

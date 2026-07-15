@@ -37,10 +37,36 @@ export const Route = createFileRoute("/bookings/")({
 
 const PAGE_SIZE = 6;
 
-function isToday(iso: string) {
-  const d = new Date(iso);
-  const n = new Date();
-  return d.toDateString() === n.toDateString();
+/**
+ * Returns today's date as a "YYYY-MM-DD" string in LOCAL time.
+ * Never use `new Date().toISOString()` for this — that's UTC and
+ * will be wrong for anyone in UTC+offset (e.g. NPT is UTC+5:45).
+ */
+function localToday(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Extracts just the YYYY-MM-DD portion from whatever the API returns.
+ * booking_date from FastAPI can arrive as:
+ *   "2025-07-15"           (plain date — most common)
+ *   "2025-07-15T00:00:00"  (datetime string)
+ * We always want just the date part for comparison.
+ */
+function toDateStr(value: string): string {
+  return value.slice(0, 10);
+}
+
+function isToday(bookingDate: string): boolean {
+  return toDateStr(bookingDate) === localToday();
+}
+
+function isUpcoming(bookingDate: string): boolean {
+  return toDateStr(bookingDate) > localToday();
 }
 
 function BookingsPage() {
@@ -53,8 +79,10 @@ function BookingsPage() {
 
   const stats = useMemo(
     () => ({
-      today: bookings.filter((b) => isToday(b.date) && b.status !== "cancelled").length,
-      upcoming: bookings.filter((b) => new Date(b.date) >= new Date() && b.status !== "cancelled").length,
+      today: bookings.filter((b) => isToday(b.date)).length,
+      upcoming: bookings.filter(
+        (b) => isUpcoming(b.date) && b.status !== "cancelled",
+      ).length,
       confirmed: bookings.filter((b) => b.status === "confirmed").length,
       cancelled: bookings.filter((b) => b.status === "cancelled").length,
     }),
@@ -77,9 +105,11 @@ function BookingsPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const today = bookings.filter((b) => isToday(b.date) && b.status !== "cancelled");
+  const today = bookings.filter((b) => isToday(b.date));
+  const todayScheduledCount = today.filter((b) => b.status !== "cancelled").length;
+
   const upcoming = bookings
-    .filter((b) => new Date(b.date) >= new Date() && !isToday(b.date) && b.status !== "cancelled")
+    .filter((b) => isUpcoming(b.date) && b.status !== "cancelled")
     .slice(0, 4);
 
   return (
@@ -103,7 +133,7 @@ function BookingsPage() {
           <Card className="p-5 lg:col-span-2">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="font-semibold">Today's appointments</h2>
-              <span className="text-muted-foreground text-xs">{today.length} scheduled</span>
+              <span className="text-muted-foreground text-xs">{todayScheduledCount} scheduled</span>
             </div>
             {today.length === 0 ? (
               <EmptyState
@@ -130,7 +160,7 @@ function BookingsPage() {
                     <div className="min-w-0">
                       <p className="truncate font-medium">{b.title}</p>
                       <p className="text-muted-foreground text-xs">
-                        {new Date(b.date).toLocaleDateString(undefined, {
+                        {new Date(`${toDateStr(b.date)}T12:00:00`).toLocaleDateString(undefined, {
                           weekday: "short",
                           month: "short",
                           day: "numeric",

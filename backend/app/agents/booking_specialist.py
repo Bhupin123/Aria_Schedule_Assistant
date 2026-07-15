@@ -9,9 +9,9 @@ from app.core.config import settings
 from app.tools.check_availability import check_availability
 from app.tools.reserve_slot import reserve_slot
 from app.tools.send_notification import send_booking_notification
-from app.tools.cancel_booking import cancel_booking, list_bookings_by_email, list_bookings_by_date
+from app.tools.cancel_booking import cancel_booking, list_bookings_by_email, list_bookings_by_date, list_bookings_by_date_range
 
-TOOLS = [check_availability, reserve_slot, send_booking_notification, cancel_booking, list_bookings_by_email, list_bookings_by_date]
+TOOLS = [check_availability, reserve_slot, send_booking_notification, cancel_booking, list_bookings_by_email, list_bookings_by_date, list_bookings_by_date_range]
 
 _llm_with_tools = None
 
@@ -64,7 +64,6 @@ def _extract_date_hint(text: str) -> str | None:
 
 def _compute_missing_fields(ctx: BookingContext | None, intent: str = "booking") -> list[str]:
     if intent == "cancel":
-        # For cancel we don't need email — we can look up by date
         return []
 
     if ctx is None:
@@ -97,7 +96,9 @@ def _format_collected(ctx: BookingContext | None) -> str:
         parts.append(f"purpose={ctx['purpose']}")
     if ctx.get("listed_bookings"):
         parts.append(f"found_bookings={len(ctx['listed_bookings'])}")
-    if ctx.get("cancellation_confirmed"):
+    if ctx.get("cancelled_booking_ids"):
+        parts.append(f"cancelled_booking_ids={ctx.get('cancelled_booking_ids')}")
+    elif ctx.get("cancellation_confirmed"):
         parts.append(f"cancelled_booking_id={ctx.get('cancelled_booking_id')}")
     return ", ".join(parts) if parts else "nothing yet"
 
@@ -151,14 +152,39 @@ def _extract_context_from_messages(
             elif "list_bookings_by_email" in tool_name and data.get("status") == "success":
                 ctx["listed_bookings"] = data.get("bookings", [])
 
-            elif "list_bookings_by_date" in tool_name and data.get("status") == "success":
-                ctx["listed_bookings"] = data.get("bookings", [])
+            # FIX: handle both single-date and date-range listing results
+            elif ("list_bookings_by_date" in tool_name or "list_bookings_by_date_range" in tool_name) and data.get("status") == "success":
+                existing = ctx.get("listed_bookings") or []
+                new_bookings = data.get("bookings", [])
+                # Merge and deduplicate by booking_id
+                existing_ids = {b.get("booking_id") for b in existing}
+                merged = existing + [b for b in new_bookings if b.get("booking_id") not in existing_ids]
+                ctx["listed_bookings"] = merged
 
             elif "cancel_booking" in tool_name and data.get("status") == "success":
                 ctx["cancellation_confirmed"] = True
-                ctx["cancelled_booking_id"] = data.get("booking_id")
+                # FIX: track ALL cancelled booking IDs, not just the last one
+                cancelled_id = data.get("booking_id")
+                if cancelled_id:
+                    ids = ctx.get("cancelled_booking_ids") or []
+                    if cancelled_id not in ids:
+                        ids.append(cancelled_id)
+                    ctx["cancelled_booking_ids"] = ids
+                    ctx["cancelled_booking_id"] = cancelled_id  # keep for backwards compat
 
     return ctx
+
+
+def _trim_messages(messages: list, max_chars: int = 4000) -> list:
+    trimmed = []
+    total = 0
+    for m in reversed(messages):
+        c = len(str(m.content))
+        if total + c > max_chars and trimmed:
+            break
+        trimmed.append(m)
+        total += c
+    return list(reversed(trimmed))
 
 
 async def booking_specialist_node(state: AgentState) -> dict:
@@ -190,9 +216,6 @@ async def booking_specialist_node(state: AgentState) -> dict:
         missing_fields=", ".join(missing) if missing else "none — all collected",
         collected_fields=_format_collected(ctx),
     )
-    print("Calling Groq...")
-    print(len(state["messages"]))
-    print(state["messages"])
 
     print("=" * 80)
     print("MESSAGE COUNT:", len(state["messages"]))
@@ -203,21 +226,10 @@ async def booking_specialist_node(state: AgentState) -> dict:
     for i, m in enumerate(state["messages"]):
         print(f"{i}: {type(m).__name__} -> {len(str(m.content))} chars")
 
-    def _trim_messages(messages: list, max_chars: int = 4000) -> list:
-        trimmed = []
-        total = 0
-        for m in reversed(messages):
-            c = len(str(m.content))
-            if total + c > max_chars and trimmed:
-                break
-            trimmed.append(m)
-            total += c
-        return list(reversed(trimmed))
-
     trimmed = _trim_messages(state["messages"])
     response = await llm.ainvoke(
-            [SystemMessage(content=system)] + trimmed
-        )
+        [SystemMessage(content=system)] + trimmed
+    )
 
     print("=" * 80)
     print("LLM RESPONSE")
