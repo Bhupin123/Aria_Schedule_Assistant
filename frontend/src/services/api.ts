@@ -92,35 +92,35 @@ const normalizeAssistantMessage = (raw: unknown): ChatMessage => {
 
 // ---------------- API ----------------
 export const chatApi = {
-  send: (body: ChatRequest) =>
-    safe(
-      async () => {
-        const thread_id = body.thread_id ?? body.conversationId;
-        const { data } = await api.post<unknown>("/chat/messages", {
-          thread_id,
-          message: body.message,
-        });
-        const d = (data ?? {}) as Record<string, unknown>;
-        const returnedThread =
-          (d.thread_id as string) ??
-          thread_id ??
-          crypto.randomUUID();
-        const messageRaw = (d.message as unknown) ?? d;
-        return {
-          thread_id: returnedThread,
-          conversationId: returnedThread,
-          message: normalizeAssistantMessage(messageRaw),
-        } as ChatResponse;
-      },
-      () => {
-        const tid = body.thread_id ?? body.conversationId ?? crypto.randomUUID();
+  send: async (body: ChatRequest): Promise<ChatResponse> => {
+    const thread_id = body.thread_id ?? body.conversationId;
+    try {
+      const { data } = await api.post<unknown>("/chat/messages", {
+        thread_id,
+        message: body.message,
+      });
+      const d = (data ?? {}) as Record<string, unknown>;
+      const returnedThread =
+        (d.thread_id as string) ?? thread_id ?? crypto.randomUUID();
+      const messageRaw = (d.message as unknown) ?? d;
+      return {
+        thread_id: returnedThread,
+        conversationId: returnedThread,
+        message: normalizeAssistantMessage(messageRaw),
+      } as ChatResponse;
+    } catch (err) {
+      // Only fall back to mock if truly offline (no response at all)
+      if (err instanceof AxiosError && !err.response) {
+        const tid = thread_id ?? crypto.randomUUID();
         return {
           thread_id: tid,
           conversationId: tid,
           message: mockAssistantReply(body.message),
         };
-      },
-    ),
+      }
+      throw err; // Let real errors surface
+    }
+  },
   history: (threadId: string) =>
     safe(
       async () => {
