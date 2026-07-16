@@ -222,7 +222,7 @@ function ChatPage() {
                       e.stopPropagation();
                       deleteConversation(c.id);
                     }}
-                    className="hover:text-destructive shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                    className="hover:text-destructive shrink-0 opacity-60 hover:opacity-100 transition-opacity"
                     aria-label="Delete conversation"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
