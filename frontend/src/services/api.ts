@@ -11,6 +11,9 @@ const baseURL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
   "http://localhost:8000/api/v1";
 
+const getBookingsApiKey = () =>
+  (import.meta.env.VITE_BOOKINGS_API_KEY as string | undefined) ?? "";
+
 export const api = axios.create({
   baseURL,
   timeout: 30_000,
@@ -18,6 +21,31 @@ export const api = axios.create({
 });
 
 api.interceptors.response.use(
+  (r) => r,
+  (error: AxiosError) => {
+    if (!error.response) {
+      return Promise.reject(new Error("Network error — please check your connection."));
+    }
+    const data = error.response.data as { detail?: string; message?: string } | undefined;
+    const msg = data?.detail ?? data?.message ?? `Request failed (${error.response.status})`;
+    return Promise.reject(new Error(msg));
+  },
+);
+
+// Bookings axios instance — injects API key per request via interceptor
+export const bookingsAxios = axios.create({
+  baseURL,
+  timeout: 30_000,
+  headers: { "Content-Type": "application/json" },
+});
+
+bookingsAxios.interceptors.request.use((config) => {
+  const key = getBookingsApiKey();
+  if (key) config.headers["X-API-Key"] = key;
+  return config;
+});
+
+bookingsAxios.interceptors.response.use(
   (r) => r,
   (error: AxiosError) => {
     if (!error.response) {
@@ -40,30 +68,6 @@ const mockAssistantReply = (message: string): ChatMessage => ({
   content: `I received: **"${message}"**.\n\nI'm currently running in **offline demo mode** because the backend is not reachable at \`${baseURL}\`.\n\n- Configure \`VITE_API_BASE_URL\` to point to your backend\n- Endpoints expected:\n  - \`POST /chat/messages\` — body: \`{ thread_id, message }\`\n  - \`GET /chat/threads/{thread_id}/history\`\n  - \`GET /bookings\`\n  - \`GET /health\``,
 });
 
-const mockBookings: Booking[] = Array.from({ length: 14 }).map((_, i) => {
-  const d = new Date();
-  d.setDate(d.getDate() + (i - 3));
-  const statuses: Booking["status"][] = ["confirmed", "pending", "completed", "cancelled"];
-  return {
-    id: `bk_${1000 + i}`,
-    title: [
-      "Product demo",
-      "Discovery call",
-      "Design sync",
-      "Onboarding session",
-      "Support call",
-    ][i % 5],
-    email: `client${i + 1}@example.com`,
-    date: d.toISOString(),
-    time: `${String(9 + (i % 8)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`,
-    durationMinutes: 30,
-    status: statuses[i % statuses.length],
-    createdAt: new Date(d.getTime() - 86400000).toISOString(),
-    notified: i % 3 !== 0,
-    notes: i % 2 ? "Prepared agenda shared via email." : undefined,
-  };
-});
-
 const safe = async <T>(fn: () => Promise<T>, fallback: () => T): Promise<T> => {
   try {
     return await fn();
@@ -72,7 +76,6 @@ const safe = async <T>(fn: () => Promise<T>, fallback: () => T): Promise<T> => {
   }
 };
 
-// Normalize a variety of possible backend response shapes into our ChatMessage
 const normalizeAssistantMessage = (raw: unknown): ChatMessage => {
   const r = (raw ?? {}) as Record<string, unknown>;
   const content =
@@ -143,7 +146,7 @@ export const chatApi = {
 
 export const bookingsApi = {
   list: async (): Promise<Booking[]> => {
-    const { data } = await api.get<unknown>("/bookings");
+    const { data } = await bookingsAxios.get<unknown>("/bookings");
     const raw = data as { items?: unknown[] } | unknown[];
     const list = Array.isArray(raw) ? raw : ((raw as { items?: unknown[] }).items ?? []);
     return (list as Record<string, unknown>[]).map((b) => ({
@@ -161,7 +164,9 @@ export const bookingsApi = {
   },
   get: async (id: string): Promise<Booking | null> => {
     try {
-      const { data } = await api.get<Record<string, unknown>>(`/bookings/${encodeURIComponent(id)}`);
+      const { data } = await bookingsAxios.get<Record<string, unknown>>(
+        `/bookings/${encodeURIComponent(id)}`,
+      );
       return {
         id: data.id as string,
         title: (data.purpose as string) ?? "Meeting",
@@ -181,10 +186,22 @@ export const bookingsApi = {
   },
 };
 
+// Health check — cached for 30s to avoid hammering the backend
+let healthCache: { status: HealthStatus; ts: number } | null = null;
+const HEALTH_TTL = 30_000;
+
 export const systemApi = {
   health: () =>
     safe(
-      async () => (await api.get<HealthStatus>("/health")).data,
+      async () => {
+        const now = Date.now();
+        if (healthCache && now - healthCache.ts < HEALTH_TTL) {
+          return healthCache.status;
+        }
+        const result = (await api.get<HealthStatus>("/health")).data;
+        healthCache = { status: result, ts: now };
+        return result;
+      },
       () => ({ status: "down" as const }),
     ),
 };
