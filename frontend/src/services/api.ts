@@ -91,7 +91,6 @@ const normalizeAssistantMessage = (raw: unknown): ChatMessage => {
 };
 
 // ---------------- API ----------------
-// ---------------- API ----------------
 export const chatApi = {
   send: async (body: ChatRequest): Promise<ChatResponse> => {
     const thread_id = body.thread_id ?? body.conversationId;
@@ -122,6 +121,25 @@ export const chatApi = {
     }
   },
   history: (threadId: string) =>
+    safe(
+      async () => {
+        const { data } = await api.get<unknown>(
+          `/chat/threads/${encodeURIComponent(threadId)}/history`,
+        );
+        const list = Array.isArray(data)
+          ? data
+          : ((data as { messages?: unknown[] })?.messages ?? []);
+        return (list as Record<string, unknown>[]).map((m) => ({
+          id: (m.id as string) ?? crypto.randomUUID(),
+          role: ((m.role as ChatMessage["role"]) ?? "assistant"),
+          content: (m.content as string) ?? (m.message as string) ?? "",
+          timestamp: (m.timestamp as string) ?? (m.created_at as string) ?? now(),
+          status: "sent" as const,
+        }));
+      },
+      () => [] as ChatMessage[],
+    ),
+};
 
 export const bookingsApi = {
   list: async (): Promise<Booking[]> => {
@@ -133,7 +151,7 @@ export const bookingsApi = {
       title: (b.purpose as string) ?? "Meeting",
       email: b.email as string,
       date: b.booking_date as string,
-      time: ((b.booking_time as string) ?? "").slice(0, 5), // "15:00:00" → "15:00"
+      time: ((b.booking_time as string) ?? "").slice(0, 5),
       durationMinutes: 30,
       status: b.status as Booking["status"],
       createdAt: b.created_at as string,
