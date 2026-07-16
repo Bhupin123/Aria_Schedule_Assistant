@@ -78,29 +78,42 @@ Open http://localhost:5173
 
 ## Architecture
 
-```
-User ──▶ React SPA (Vercel)
-           │  POST /api/v1/chat/messages
-           ▼
-         FastAPI (Render)
-           │
-           ▼
-         LangGraph StateGraph
-         ┌─────────────────────────┐
-         │  START → triage         │
-         │    ↓ (booking intent)   │
-         │  booking_specialist     │
-         │    ↕ (tool calls)       │
-         │  tools (ToolNode)       │
-         │    • check_availability │
-         │    • reserve_slot       │
-         │    • send_notification  │
-         │  → END                  │
-         └─────────────────────────┘
-           │
-           ▼
-         SQLite (app data + LangGraph checkpoints)
-```
+┌─────────────────────────────────────────────────────┐
+│                   React SPA (Vercel)                │
+│              Chat UI + Bookings Page                │
+└──────────────────────┬──────────────────────────────┘
+                       │  POST /api/v1/chat/messages
+                       │  X-API-Key header
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│                  FastAPI (Render)                   │
+│           CORS • Rate Limiting • Auth               │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│            LangGraph StateGraph                     │
+│                                                     │
+│   START ──▶ [ Triage Agent ]                        │
+│                   │                                 │
+│          general  │  booking intent                 │
+│          reply ◀──┤──▶ [ Booking Specialist ]       │
+│                   │           │                     │
+│                   │     ┌─────▼──────────────┐      │
+│                   │     │     ToolNode        │      │
+│                   │     │  check_availability │      │
+│                   │     │  reserve_slot       │      │
+│                   │     │  send_notification  │      │
+│                   │     └─────────────────────┘      │
+│                   ▼                                 │
+│                  END                                │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│                  SQLite Database                    │
+│     App Data (bookings, slots)  │  LG Checkpoints  │
+└─────────────────────────────────────────────────────┘
 
 ## API Endpoints
 
