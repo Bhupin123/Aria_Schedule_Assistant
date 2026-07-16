@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "Scheduling Assistant"
 
-    ALLOWED_ORIGINS: str = "http://localhost:8080/"
+    ALLOWED_ORIGINS: str = "http://localhost:8080"
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     APP_VERSION: str = "1.0.0"
@@ -25,9 +25,12 @@ class Settings(BaseSettings):
     MAX_ACTIVE_BOOKINGS_PER_EMAIL: int = 5
     BOOKING_WINDOW_DAYS: int = 90
 
+    # Simple API key for booking endpoints (set in Render env vars)
+    BOOKINGS_API_KEY: str = ""
+
     @property
     def origins_list(self) -> list[str]:
-        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
+        return [o.strip().rstrip("/") for o in self.ALLOWED_ORIGINS.split(",")]
 
 
 settings = Settings()
