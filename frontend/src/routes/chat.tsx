@@ -34,6 +34,14 @@ function loadConversations(): Conversation[] {
   }
 }
 
+function saveConversations(conversations: Conversation[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+  } catch {
+    // ignore
+  }
+}
+
 const suggestions = [
   "Book a 30-min demo with alex@acme.com next Thursday at 3pm",
   "What does my Friday look like?",
@@ -42,20 +50,24 @@ const suggestions = [
 ];
 
 function ChatPage() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversationsRaw] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Wrap setter to always persist
+  const setConversations = (updater: Conversation[] | ((prev: Conversation[]) => Conversation[])) => {
+    setConversationsRaw((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      saveConversations(next);
+      return next;
+    });
+  };
 
   useEffect(() => {
-    setConversations(loadConversations());
+    setConversationsRaw(loadConversations());
   }, []);
-
-  useEffect(() => {
-    if (conversations.length) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
-    }
-  }, [conversations]);
 
   const active = useMemo(
     () => conversations.find((c) => c.id === activeId) ?? null,
@@ -69,7 +81,6 @@ function ChatPage() {
   const sendMutation = useMutation({
     mutationFn: async ({ message, conversationId }: { message: string; conversationId?: string }) =>
       chatApi.send({ message, conversationId }),
-    onError: (e: Error) => toast.error(e.message),
   });
 
   const newConversation = () => {
@@ -84,7 +95,10 @@ function ChatPage() {
   };
 
   const deleteConversation = (id: string) => {
-    setConversations((prev) => prev.filter((c) => c.id !== id));
+    setConversations((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      return next;
+    });
     if (activeId === id) setActiveId(null);
   };
 
@@ -101,7 +115,13 @@ function ChatPage() {
     return c;
   };
 
+  const stop = () => {
+    abortRef.current?.abort();
+    sendMutation.reset();
+  };
+
   const send = async (content: string) => {
+    if (sendMutation.isPending) return;
     const conv = ensureActive();
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -124,6 +144,8 @@ function ChatPage() {
       ),
     );
 
+    abortRef.current = new AbortController();
+
     try {
       const res = await sendMutation.mutateAsync({ message: content, conversationId: conv.id });
       setConversations((prev) =>
@@ -133,8 +155,9 @@ function ChatPage() {
             : c,
         ),
       );
-    } catch {
-      /* toast handled */
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
+      toast.error(e instanceof Error ? e.message : "Failed to send message");
     }
   };
 
@@ -142,7 +165,6 @@ function ChatPage() {
     if (!active) return;
     const lastUser = [...active.messages].reverse().find((m) => m.role === "user");
     if (!lastUser) return;
-    // Remove last assistant message before regenerating
     setConversations((prev) =>
       prev.map((c) => {
         if (c.id !== active.id) return c;
@@ -283,7 +305,11 @@ function ChatPage() {
           </div>
 
           <div className="border-t p-4">
-            <ChatInput onSend={send} isLoading={sendMutation.isPending} />
+            <ChatInput
+              onSend={send}
+              onStop={stop}
+              isLoading={sendMutation.isPending}
+            />
           </div>
         </section>
       </div>
