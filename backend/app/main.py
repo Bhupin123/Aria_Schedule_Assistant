@@ -40,7 +40,7 @@ app.add_middleware(
     allow_origins=settings.origins_list,
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Request-ID"],
+    allow_headers=["Content-Type", "X-Request-ID", "X-API-Key"],
     max_age=600,
 )
 
