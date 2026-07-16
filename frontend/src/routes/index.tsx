@@ -1,271 +1,291 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-  ArrowRight,
-  Bot,
-  Calendar,
-  Check,
-  Cpu,
-  MessageSquare,
-  Sparkles,
-  Workflow,
-  Zap,
-  ShieldCheck,
-  Bell,
-} from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { Bot, Plus, Sparkles, Trash2, MessageSquare } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ChatInput } from "@/components/chat/chat-input";
+import { MessageBubble } from "@/components/chat/message-bubble";
+import { TypingIndicator } from "@/components/chat/typing-indicator";
+import { chatApi } from "@/services/api";
+import type { ChatMessage, Conversation } from "@/types";
+import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/chat")({
   head: () => ({
     meta: [
-      { title: "Aria — Conversational AI Scheduling" },
-      {
-        name: "description",
-        content:
-          "Book, reschedule and manage appointments through a multi-agent AI assistant. Beautiful, fast, and built for teams.",
-      },
+      { title: "Chat · Aria" },
+      { name: "description", content: "Chat with your AI scheduling assistant." },
     ],
   }),
-  component: Landing,
+  component: ChatPage,
 });
 
-const features = [
-  {
-    icon: MessageSquare,
-    title: "Natural conversation",
-    desc: "Book meetings the way you'd text a colleague. Aria understands intent, times, and time zones.",
-  },
-  {
-    icon: Workflow,
-    title: "Multi-agent orchestration",
-    desc: "Specialized agents handle intent, availability, confirmation, and notifications — in parallel.",
-  },
-  {
-    icon: Calendar,
-    title: "Live calendar sync",
-    desc: "Two-way sync with your calendar. See conflicts, availability, and buffer times in real time.",
-  },
-  {
-    icon: Bell,
-    title: "Smart notifications",
-    desc: "Email confirmations, reminders and cancellations are sent automatically at the right moment.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Production-ready",
-    desc: "Typed APIs, retries, health checks and observability baked in from day one.",
-  },
-  {
-    icon: Zap,
-    title: "Blazing fast",
-    desc: "Streaming responses, optimistic updates, and edge-ready — every interaction feels instant.",
-  },
+const STORAGE_KEY = "aria-conversations";
+
+function loadConversations(): Conversation[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+const suggestions = [
+  "Book a 30-min demo with alex@acme.com next Thursday at 3pm",
+  "What does my Friday look like?",
+  "Reschedule my 2pm today to tomorrow morning",
+  "Cancel all bookings this weekend",
 ];
 
-const agents = [
-  { name: "Intent Agent", role: "Parses natural language into structured booking commands." },
-  { name: "Availability Agent", role: "Queries your calendar for open slots and buffer windows." },
-  { name: "Booking Agent", role: "Creates, updates and cancels appointments transactionally." },
-  { name: "Notification Agent", role: "Sends confirmations, reminders, and follow-ups." },
-];
+function ChatPage() {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-const steps = [
-  { title: "Ask", desc: "Type a natural request like 'book a 30-min call with Sam next Tuesday afternoon'." },
-  { title: "Reason", desc: "Aria's agents parse intent, check availability and propose the best slot." },
-  { title: "Confirm", desc: "Review, tweak or accept. Aria creates the booking and notifies attendees." },
-];
+  useEffect(() => {
+    setConversations(loadConversations());
+  }, []);
 
-function Landing() {
+  useEffect(() => {
+    if (conversations.length) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+    }
+  }, [conversations]);
+
+  const active = useMemo(
+    () => conversations.find((c) => c.id === activeId) ?? null,
+    [conversations, activeId],
+  );
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [active?.messages.length]);
+
+  const sendMutation = useMutation({
+    mutationFn: async ({ message, conversationId }: { message: string; conversationId?: string }) =>
+      chatApi.send({ message, conversationId }),
+  });
+
+  const newConversation = () => {
+    const c: Conversation = {
+      id: crypto.randomUUID(),
+      title: "New conversation",
+      updatedAt: new Date().toISOString(),
+      messages: [],
+    };
+    setConversations((prev) => [c, ...prev]);
+    setActiveId(c.id);
+  };
+
+  const deleteConversation = (id: string) => {
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    if (activeId === id) setActiveId(null);
+  };
+
+  const ensureActive = (): Conversation => {
+    if (active) return active;
+    const c: Conversation = {
+      id: crypto.randomUUID(),
+      title: "New conversation",
+      updatedAt: new Date().toISOString(),
+      messages: [],
+    };
+    setConversations((prev) => [c, ...prev]);
+    setActiveId(c.id);
+    return c;
+  };
+
+  const send = async (content: string) => {
+    if (sendMutation.isPending) return;
+    const conv = ensureActive();
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content,
+      timestamp: new Date().toISOString(),
+      status: "sent",
+    };
+
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === conv.id
+          ? {
+              ...c,
+              title: c.messages.length === 0 ? content.slice(0, 60) : c.title,
+              updatedAt: new Date().toISOString(),
+              messages: [...c.messages, userMsg],
+            }
+          : c,
+      ),
+    );
+
+    try {
+      const res = await sendMutation.mutateAsync({ message: content, conversationId: conv.id });
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conv.id
+            ? { ...c, updatedAt: new Date().toISOString(), messages: [...c.messages, res.message] }
+            : c,
+        ),
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to send message");
+    }
+  };
+
+  const regenerate = async () => {
+    if (!active) return;
+    const lastUser = [...active.messages].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id !== active.id) return c;
+        const trimmed = [...c.messages];
+        if (trimmed[trimmed.length - 1]?.role === "assistant") trimmed.pop();
+        return { ...c, messages: trimmed };
+      }),
+    );
+    await send(lastUser.content);
+  };
+
+  const messages = active?.messages ?? [];
+  const isEmpty = messages.length === 0;
+
   return (
     <AppShell>
-      {/* Hero */}
-      <section className="mesh-bg relative overflow-hidden">
-        <div className="mx-auto max-w-7xl px-4 pb-24 pt-16 sm:px-6 sm:pt-24 lg:pt-32">
-          <div className="mx-auto max-w-3xl text-center">
-            <div className="bg-card text-muted-foreground mx-auto inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium shadow-sm">
-              <Sparkles className="text-primary h-3.5 w-3.5" />
-              Multi-agent AI · Now in preview
-            </div>
-            <h1 className="font-display mt-6 text-4xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
-              Scheduling, <span className="gradient-text">reimagined</span> as a conversation.
-            </h1>
-            <p className="text-muted-foreground mx-auto mt-6 max-w-2xl text-lg">
-              Aria is a production-ready AI assistant that books, reschedules and manages your
-              calendar through natural language — powered by a coordinated team of specialist agents.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Button asChild size="lg" className="shadow-glow">
-                <Link to="/chat">
-                  Try the chat <ArrowRight className="ml-1 h-4 w-4" />
-                </Link>
-              </Button>
-              <Button asChild size="lg" variant="outline">
-                <Link to="/bookings">View bookings</Link>
-              </Button>
-            </div>
-
-            <div className="text-muted-foreground mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs">
-              <span className="inline-flex items-center gap-1.5"><Check className="text-success h-3.5 w-3.5" /> No credit card</span>
-              <span className="inline-flex items-center gap-1.5"><Check className="text-success h-3.5 w-3.5" /> FastAPI backend</span>
-              <span className="inline-flex items-center gap-1.5"><Check className="text-success h-3.5 w-3.5" /> Open architecture</span>
-            </div>
+      <div className="mx-auto flex h-[calc(100vh-4rem)] w-full max-w-7xl overflow-hidden">
+        {/* Sidebar */}
+        <aside
+          className={cn(
+            "bg-sidebar hidden w-72 shrink-0 flex-col border-r md:flex",
+            !sidebarOpen && "md:hidden",
+          )}
+        >
+          <div className="flex items-center justify-between p-4">
+            <h2 className="text-sm font-semibold">Conversations</h2>
+            <Button size="sm" variant="ghost" onClick={newConversation}>
+              <Plus className="h-4 w-4" />
+            </Button>
           </div>
-
-          {/* Preview card */}
-          <div className="mx-auto mt-16 max-w-4xl">
-            <Card className="shadow-elegant overflow-hidden p-0">
-              <div className="bg-muted/50 flex items-center gap-1.5 border-b px-4 py-2.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-                <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
-                <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
-                <span className="text-muted-foreground ml-3 text-xs">aria.app / chat</span>
+          <ScrollArea className="flex-1 px-2">
+            {conversations.length === 0 && (
+              <div className="text-muted-foreground p-4 text-center text-xs">
+                No conversations yet
               </div>
-              <div className="space-y-4 p-6">
-                <div className="flex justify-end">
-                  <div className="bg-primary text-primary-foreground max-w-sm rounded-2xl rounded-br-md px-4 py-2.5 text-sm">
-                    Book a 30-min product demo with alex@acme.com next Thursday at 3pm.
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="gradient-brand-bg grid h-8 w-8 shrink-0 place-items-center rounded-full">
-                    <Bot className="text-primary-foreground h-4 w-4" />
-                  </div>
-                  <div className="bg-card max-w-sm rounded-2xl rounded-bl-md border px-4 py-2.5 text-sm">
-                    Confirmed ✅ Thursday, 3:00–3:30 PM with alex@acme.com. I've sent a calendar
-                    invite and a reminder is queued for 15 minutes before.
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="border-t py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
-              Built for teams that move fast
-            </h2>
-            <p className="text-muted-foreground mt-4">
-              Every detail obsessed over. From the first message to the final confirmation.
-            </p>
-          </div>
-          <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {features.map((f) => (
-              <Card key={f.title} className="p-6 transition-all hover:-translate-y-0.5 hover:shadow-elegant">
-                <div className="bg-primary/10 text-primary grid h-10 w-10 place-items-center rounded-lg">
-                  <f.icon className="h-5 w-5" />
-                </div>
-                <h3 className="mt-4 font-semibold">{f.title}</h3>
-                <p className="text-muted-foreground mt-1.5 text-sm">{f.desc}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Architecture */}
-      <section className="bg-surface/50 border-t py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
-            <div>
-              <div className="text-primary inline-flex items-center gap-2 text-sm font-medium">
-                <Cpu className="h-4 w-4" /> Architecture
-              </div>
-              <h2 className="font-display mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-                A coordinated team of specialists
-              </h2>
-              <p className="text-muted-foreground mt-4">
-                Aria isn't a single monolithic LLM. It's a network of focused agents that share
-                context and hand off work — resilient, observable and easy to extend.
-              </p>
-              <div className="mt-6 flex flex-col gap-2 text-sm">
-                {["Typed FastAPI endpoints", "Streaming responses", "Retry & backoff built-in", "Pluggable providers"].map((t) => (
-                  <div key={t} className="flex items-center gap-2">
-                    <Check className="text-success h-4 w-4" />
-                    {t}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {agents.map((a, i) => (
-                <Card key={a.name} className="p-5" style={{ animationDelay: `${i * 60}ms` }}>
-                  <div className="gradient-brand-bg grid h-9 w-9 place-items-center rounded-lg shadow-glow">
-                    <Bot className="text-primary-foreground h-4 w-4" />
-                  </div>
-                  <h3 className="mt-3 font-semibold">{a.name}</h3>
-                  <p className="text-muted-foreground mt-1 text-sm">{a.role}</p>
-                </Card>
+            )}
+            <div className="flex flex-col gap-1 pb-4">
+              {conversations.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setActiveId(c.id)}
+                  className={cn(
+                    "group flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
+                    c.id === activeId
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60",
+                  )}
+                >
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                  <span className="flex-1 truncate">{c.title}</span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteConversation(c.id);
+                    }}
+                    className="hover:text-destructive shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                    aria-label="Delete conversation"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </span>
+                </button>
               ))}
             </div>
-          </div>
-        </div>
-      </section>
+          </ScrollArea>
+        </aside>
 
-      {/* How it works */}
-      <section className="border-t py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
-              How it works
-            </h2>
-            <p className="text-muted-foreground mt-4">Three simple steps from intent to invite.</p>
-          </div>
-          <div className="mt-14 grid gap-5 md:grid-cols-3">
-            {steps.map((s, i) => (
-              <Card key={s.title} className="p-6">
-                <div className="text-primary font-display text-4xl font-bold opacity-30">
-                  0{i + 1}
-                </div>
-                <h3 className="mt-2 text-lg font-semibold">{s.title}</h3>
-                <p className="text-muted-foreground mt-1.5 text-sm">{s.desc}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="px-4 pb-24 sm:px-6">
-        <div className="mx-auto max-w-5xl">
-          <Card className="gradient-brand-bg shadow-glow overflow-hidden border-0 p-10 text-center sm:p-16">
-            <h2 className="font-display text-primary-foreground text-3xl font-bold tracking-tight sm:text-4xl">
-              Ready to chat with Aria?
-            </h2>
-            <p className="text-primary-foreground/90 mx-auto mt-3 max-w-xl">
-              Point it at your FastAPI backend and start scheduling in seconds.
-            </p>
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              <Button asChild size="lg" variant="secondary">
-                <Link to="/chat">Open chat <ArrowRight className="ml-1 h-4 w-4" /></Link>
+        {/* Main chat */}
+        <section className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-center justify-between border-b px-4 py-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="hidden md:inline-flex"
+                onClick={() => setSidebarOpen((v) => !v)}
+              >
+                <MessageSquare className="h-4 w-4" />
               </Button>
-              <Button asChild size="lg" variant="outline" className="border-white/40 bg-transparent text-primary-foreground hover:bg-white/10">
-                <Link to="/settings">Configure API</Link>
-              </Button>
+              <h1 className="truncate text-sm font-semibold">
+                {active?.title ?? "New conversation"}
+              </h1>
             </div>
-          </Card>
-        </div>
-      </section>
+            <Button size="sm" variant="outline" onClick={newConversation}>
+              <Plus className="mr-1 h-3.5 w-3.5" /> New
+            </Button>
+          </div>
 
-      <footer className="border-t py-8">
-        <div className="text-muted-foreground mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 text-xs sm:flex-row sm:px-6">
-          <div className="flex items-center gap-2">
-            <span className="gradient-brand-bg grid h-5 w-5 place-items-center rounded">
-              <Bot className="text-primary-foreground h-3 w-3" />
-            </span>
-            © {new Date().getFullYear()} Aria. All rights reserved.
+          <div ref={scrollRef} className="scrollbar-thin flex-1 overflow-y-auto">
+            {isEmpty ? (
+              <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center px-4 py-10 text-center">
+                <div className="gradient-brand-bg shadow-glow grid h-14 w-14 place-items-center rounded-2xl">
+                  <Bot className="text-primary-foreground h-6 w-6" />
+                </div>
+                <h2 className="font-display mt-4 text-2xl font-semibold">
+                  How can I help you schedule today?
+                </h2>
+                <p className="text-muted-foreground mt-2 max-w-md text-sm">
+                  Ask me to book, reschedule, or check availability. I can handle multiple attendees
+                  and time zones.
+                </p>
+                <div className="mt-8 grid w-full gap-2 sm:grid-cols-2">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => send(s)}
+                      className="bg-card hover:border-ring/40 hover:shadow-elegant group rounded-xl border p-4 text-left text-sm transition-all"
+                    >
+                      <Sparkles className="text-primary mb-2 h-4 w-4 opacity-70 group-hover:opacity-100" />
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
+                {messages.map((m, i) => (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    isLast={i === messages.length - 1 && m.role === "assistant"}
+                    onRegenerate={regenerate}
+                  />
+                ))}
+                {sendMutation.isPending && (
+                  <div className="flex items-start gap-3">
+                    <div className="gradient-brand-bg grid h-8 w-8 shrink-0 place-items-center rounded-full">
+                      <Bot className="text-primary-foreground h-4 w-4" />
+                    </div>
+                    <div className="bg-card rounded-2xl rounded-bl-md border px-4 py-1">
+                      <TypingIndicator />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-4">
-            <Link to="/settings" className="hover:text-foreground">Settings</Link>
-            <Link to="/bookings" className="hover:text-foreground">Bookings</Link>
-            <Link to="/chat" className="hover:text-foreground">Chat</Link>
+
+          <div className="border-t p-4">
+            <ChatInput onSend={send} isLoading={sendMutation.isPending} />
           </div>
-        </div>
-      </footer>
+        </section>
+      </div>
     </AppShell>
   );
 }
