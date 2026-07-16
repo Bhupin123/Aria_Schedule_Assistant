@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Bot, Plus, Sparkles, Trash2, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
@@ -38,7 +38,7 @@ function saveConversations(conversations: Conversation[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
   } catch {
-    // ignore
+    // ignore quota errors
   }
 }
 
@@ -56,14 +56,16 @@ function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Wrap setter to always persist
-  const setConversations = (updater: Conversation[] | ((prev: Conversation[]) => Conversation[])) => {
-    setConversationsRaw((prev) => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      saveConversations(next);
-      return next;
-    });
-  };
+  const setConversations = useCallback(
+    (updater: Conversation[] | ((prev: Conversation[]) => Conversation[])) => {
+      setConversationsRaw((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        saveConversations(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     setConversationsRaw(loadConversations());
@@ -79,8 +81,13 @@ function ChatPage() {
   }, [active?.messages.length]);
 
   const sendMutation = useMutation({
-    mutationFn: async ({ message, conversationId }: { message: string; conversationId?: string }) =>
-      chatApi.send({ message, conversationId }),
+    mutationFn: async ({
+      message,
+      conversationId,
+    }: {
+      message: string;
+      conversationId?: string;
+    }) => chatApi.send({ message, conversationId }),
   });
 
   const newConversation = () => {
@@ -95,10 +102,7 @@ function ChatPage() {
   };
 
   const deleteConversation = (id: string) => {
-    setConversations((prev) => {
-      const next = prev.filter((c) => c.id !== id);
-      return next;
-    });
+    setConversations((prev) => prev.filter((c) => c.id !== id));
     if (activeId === id) setActiveId(null);
   };
 
@@ -147,11 +151,18 @@ function ChatPage() {
     abortRef.current = new AbortController();
 
     try {
-      const res = await sendMutation.mutateAsync({ message: content, conversationId: conv.id });
+      const res = await sendMutation.mutateAsync({
+        message: content,
+        conversationId: conv.id,
+      });
       setConversations((prev) =>
         prev.map((c) =>
           c.id === conv.id
-            ? { ...c, updatedAt: new Date().toISOString(), messages: [...c.messages, res.message] }
+            ? {
+                ...c,
+                updatedAt: new Date().toISOString(),
+                messages: [...c.messages, res.message],
+              }
             : c,
         ),
       );
@@ -162,7 +173,7 @@ function ChatPage() {
   };
 
   const regenerate = async () => {
-    if (!active) return;
+    if (!active || sendMutation.isPending) return;
     const lastUser = [...active.messages].reverse().find((m) => m.role === "user");
     if (!lastUser) return;
     setConversations((prev) =>
@@ -203,31 +214,30 @@ function ChatPage() {
             )}
             <div className="flex flex-col gap-1 pb-4">
               {conversations.map((c) => (
-                <button
+                <div
                   key={c.id}
-                  onClick={() => setActiveId(c.id)}
                   className={cn(
-                    "group flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
+                    "group flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors cursor-pointer",
                     c.id === activeId
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
                       : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60",
                   )}
+                  onClick={() => setActiveId(c.id)}
                 >
                   <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
-                  <span className="flex-1 truncate">{c.title}</span>
-                  <span
-                    role="button"
-                    tabIndex={0}
+                  <span className="flex-1 truncate text-left">{c.title}</span>
+                  <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteConversation(c.id);
                     }}
-                    className="hover:text-destructive shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+                    className="hover:text-destructive shrink-0 opacity-40 hover:opacity-100 transition-opacity ml-1"
                     aria-label="Delete conversation"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                  </span>
-                </button>
+                  </button>
+                </div>
               ))}
             </div>
           </ScrollArea>
@@ -272,7 +282,8 @@ function ChatPage() {
                     <button
                       key={s}
                       onClick={() => send(s)}
-                      className="bg-card hover:border-ring/40 hover:shadow-elegant group rounded-xl border p-4 text-left text-sm transition-all"
+                      disabled={sendMutation.isPending}
+                      className="bg-card hover:border-ring/40 hover:shadow-elegant group rounded-xl border p-4 text-left text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Sparkles className="text-primary mb-2 h-4 w-4 opacity-70 group-hover:opacity-100" />
                       {s}
@@ -305,11 +316,7 @@ function ChatPage() {
           </div>
 
           <div className="border-t p-4">
-            <ChatInput
-              onSend={send}
-              onStop={stop}
-              isLoading={sendMutation.isPending}
-            />
+            <ChatInput onSend={send} onStop={stop} isLoading={sendMutation.isPending} />
           </div>
         </section>
       </div>
