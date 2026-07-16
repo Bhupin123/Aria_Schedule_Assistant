@@ -91,6 +91,7 @@ const normalizeAssistantMessage = (raw: unknown): ChatMessage => {
 };
 
 // ---------------- API ----------------
+// ---------------- API ----------------
 export const chatApi = {
   send: async (body: ChatRequest): Promise<ChatResponse> => {
     const thread_id = body.thread_id ?? body.conversationId;
@@ -109,7 +110,6 @@ export const chatApi = {
         message: normalizeAssistantMessage(messageRaw),
       } as ChatResponse;
     } catch (err) {
-      // Only fall back to mock if truly offline (no response at all)
       if (err instanceof AxiosError && !err.response) {
         const tid = thread_id ?? crypto.randomUUID();
         return {
@@ -118,29 +118,10 @@ export const chatApi = {
           message: mockAssistantReply(body.message),
         };
       }
-      throw err; // Let real errors surface
+      throw err;
     }
   },
   history: (threadId: string) =>
-    safe(
-      async () => {
-        const { data } = await api.get<unknown>(
-          `/chat/threads/${encodeURIComponent(threadId)}/history`,
-        );
-        const list = Array.isArray(data)
-          ? data
-          : ((data as { messages?: unknown[] })?.messages ?? []);
-        return (list as Record<string, unknown>[]).map((m) => ({
-          id: (m.id as string) ?? crypto.randomUUID(),
-          role: ((m.role as ChatMessage["role"]) ?? "assistant"),
-          content: (m.content as string) ?? (m.message as string) ?? "",
-          timestamp: (m.timestamp as string) ?? (m.created_at as string) ?? now(),
-          status: "sent" as const,
-        }));
-      },
-      () => [] as ChatMessage[],
-    ),
-};
 
 export const bookingsApi = {
   list: async (): Promise<Booking[]> => {
